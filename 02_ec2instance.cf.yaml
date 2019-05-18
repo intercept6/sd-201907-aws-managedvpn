@@ -1,0 +1,92 @@
+---
+Parameters:
+  Environment:
+    Description: An environment name that will be prefixed to resource names. ex. xsys-prd
+    Type: String
+    Default: "xsys-prd"
+  VPCStackName:
+    Type: String
+  AmiId:
+    Description: Amazon Linux2 AMI ID
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2
+  InstanceType:
+    Description: Instance Type
+    Type: String
+    Default: t3.medium
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+  OnpremissSubnetCIDR:
+    Description: Please enter the IP range (CIDR notation) for the onpremiss subnet
+    Type: String
+    Default: 192.168.100.0/24
+    AllowedPattern: '^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/([0-9]|[1-2][0-9]|3[0-2]))$'
+    ConstraintDescription: 'Malformed input-Parameter PublicSubnet2CIDR must match pattern ^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/([0-9]|[1-2][0-9]|3[0-2]))$'
+
+Resources:
+  ################################################
+  # EC2 Instance
+  ################################################
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeType: gp2
+            VolumeSize: 10
+      DisableApiTermination: false
+      ImageId: !Ref AmiId
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      Monitoring: false
+      SecurityGroupIds:
+        - !Ref InstanceSecurityGroup
+      SubnetId:
+        Fn::ImportValue: !Sub ${VPCStackName}-PublicSubnet1
+      Tags:
+        - Key: Name
+          Value: !Sub ${Environment}-instance
+  ###############################################
+  # Security Group
+  ###############################################
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub "${Environment}-instance-sg"
+      GroupDescription: !Sub "${Environment}-instance-sg"
+      VpcId:
+        Fn::ImportValue: !Sub ${VPCStackName}-VPC
+      Tags:
+        - Key: Name
+          Value: !Sub ${Environment}-instance-sg
+  InstanceSecurityGroupIngressSSH:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      CidrIp: !Ref OnpremissSubnetCIDR
+      Description: from on-premiss
+      FromPort: 22
+      GroupId: !Ref InstanceSecurityGroup
+      IpProtocol: tcp
+      ToPort: 22
+  InstanceSecurityGroupIngressICMP:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      CidrIp: !Ref OnpremissSubnetCIDR
+      Description: from on-premiss
+      FromPort: -1
+      GroupId: !Ref InstanceSecurityGroup
+      IpProtocol: icmp
+      ToPort: -1
+
+Outputs:
+  EC2Instance:
+    Description: A reference to the created EC2Instance
+    Value: !Ref EC2Instance
+    Export:
+      Name: !Sub ${AWS::StackName}-EC2Instance
+  InstanceSecurityGroup:
+    Description: A reference to the security group
+    Value: !Ref InstanceSecurityGroup
+    Export:
+      Name: !Sub ${AWS::StackName}-InstanceSecurityGroup

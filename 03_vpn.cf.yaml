@@ -1,0 +1,79 @@
+---
+Parameters:
+  Environment:
+    Description: An environment name that will be prefixed to resource names. ex. xsys-prd
+    Type: String
+    Default: "xsys-prd"
+  VPCStackName:
+    Type: String
+  CustomerGatewayIpAddress:
+    Type: String
+  CustomerGatewayBgpAsn:
+    Type: Number
+    Default: 65000
+  AmazonSideAsn:
+    Type: Number
+    Default: 64512
+
+Resources:
+  #################################################
+  # AWS ManagedVPN
+  #################################################
+  VPNGateway:
+    Type: AWS::EC2::VPNGateway
+    Properties:
+      Type: ipsec.1
+      AmazonSideAsn: !Ref AmazonSideAsn
+      Tags:
+        - Key: Name
+          Value: !Sub ${Environment}-vgw
+  AttachVPNGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId:
+        Fn::ImportValue: !Sub ${VPCStackName}-VPC
+      VpnGatewayId: !Ref VPNGateway
+  CustomerGateway:
+    Type: AWS::EC2::CustomerGateway
+    Properties:
+      Type: ipsec.1
+      BgpAsn: !Ref CustomerGatewayBgpAsn
+      IpAddress: !Ref CustomerGatewayIpAddress
+      Tags:
+        - Key: Name
+          Value: !Sub ${Environment}-cgw
+  VPNConnection:
+    Type: AWS::EC2::VPNConnection
+    Properties:
+      Type: ipsec.1
+      StaticRoutesOnly: false
+      CustomerGatewayId: !Ref CustomerGateway
+      VpnGatewayId: !Ref VPNGateway
+      Tags:
+        - Key: Name
+          Value: !Sub ${Environment}-vpn
+  VPNRouteProp:
+    Type: AWS::EC2::VPNGatewayRoutePropagation
+    DependsOn: AttachVPNGateway
+    Properties:
+      RouteTableIds:
+        - Fn::ImportValue: !Sub ${VPCStackName}-PublicSubnetRouteTable1
+        - Fn::ImportValue: !Sub ${VPCStackName}-PublicSubnetRouteTable2
+      VpnGatewayId: !Ref VPNGateway
+
+Outputs:
+  CustomerGateway:
+    Description: A reference to the created customer gateway
+    Value: !Ref CustomerGateway
+    Export:
+      Name: !Sub ${AWS::StackName}-CustomerGateway
+  VPNGateway:
+    Description: A reference to the created vpn gateway (virtual private gateway)
+    Value: !Ref VPNGateway
+    Export:
+      Name: !Sub ${AWS::StackName}-VPNGateway
+  VPNConnection:
+    Description: A reference to the created vpn connection 
+    Value: !Ref VPNConnection
+    Export:
+      Name: !Sub ${AWS::StackName}-VPNConnection
